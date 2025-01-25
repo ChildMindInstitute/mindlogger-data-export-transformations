@@ -5,6 +5,7 @@ import numpy as np
 import re, os, sqlite3
 from datetime import datetime
 from pathlib import Path
+from packaging.version import Version
 
 # %%
 #input variables
@@ -12,8 +13,8 @@ from pathlib import Path
 input_path = Path('/Users/sailaja.yenepalli/Documents/scripts/a_Export Enhancements/NKI-LifeEvents/input')
 output_path = Path('/Users/sailaja.yenepalli/Documents/scripts/a_Export Enhancements/NKI-LifeEvents/output')
 
-#input_path = Path('/Users/minji.kang/Documents/NGDT/Data_export_management/Report_CSV_Preprocessing_Generic_Script/NKI-LifeEvents/input/')
-#output_path = Path('/Users/minji.kang/Documents/NGDT/Data_export_management/Report_CSV_Preprocessing_Generic_Script/NKI-LifeEvents/output/')
+#input_path = Path('/Users/minji.kang/Documents/NGDT/Data_export_management/Report_CSV_Preprocessing_Generic_Script/MiResource/input/')
+#output_path = Path('/Users/minji.kang/Documents/NGDT/Data_export_management/Report_CSV_Preprocessing_Generic_Script/MiResource/output/')
 
 # %%
 
@@ -339,7 +340,6 @@ subscale_tranformed_data.to_csv(output_path/'report_response_formatted.csv', ind
 
 # %%
 
-
 # Define column list and response column name
 mycolumn_list = [
     'userId', 'secret_user_id', 'source_user_secret_id', 
@@ -409,6 +409,49 @@ data_wide = widen_data(subscale_tranformed_data, mycolumn_list)
 # Save the output to CSV
 data_wide.to_csv(os.path.join(output_path, 'report_response_formatted_widened.csv'), index=False)
 
+
+# %%
+def response_wide_split_by_activity(data, column_list, output_path):
+
+    #Group data by activity_id
+    report_response_by_activity = {key: group for key, group in data.groupby('activity_id')}
+
+    # Get the latest name for each id
+    activity_version = data[['version', 'activity_id', 'activity_name']].drop_duplicates()
+    activity_version = activity_version.dropna(subset=['version'])
+    activity_version['version_obj'] = activity_version['version'].apply(Version)
+    activity_version = activity_version.sort_values(by=['activity_id', 'version_obj'], ascending=[True, False])
+    latest_versions = activity_version.groupby('activity_id').head(1).drop(columns='version_obj').reset_index(drop=True)
+    latest_versions['activity_name'] = latest_versions['activity_name'].apply(lambda x: re.sub(r'[^\w\s]', '_', x))
+
+    # Define the folder to save the CSV files
+    output_folder = output_path / "response_wide_split_by_activity"
+    output_folder.mkdir(parents=True, exist_ok=True)  # Create the folder if it doesn't exist
+
+    # Apply the function to each DataFrame and save as CSV
+    for id_value, df in report_response_by_activity.items():
+        # Merge the name from id_name_df based on 'id'
+        name_df = latest_versions[latest_versions['activity_id'] == id_value]
+        if not name_df.empty:
+            activity_name = name_df['activity_name'].values[0]
+        else:
+            activity_name = f"Unknown_{id_value}"
+
+        # Apply the widen_data function
+        wide_df = widen_data(df, column_list)
+
+        wide_df.columns = wide_df.columns.str.replace(r'^activityName\[[^\]]+\]_','', regex=True)
+
+        # Construct the filename using the activity name and id
+        filename = output_folder / f"wide_data_activityName[{activity_name}]_activityId[{id_value}].csv"
+        
+        # Write the DataFrame to a CSV file
+        wide_df.to_csv(filename, index=False)
+        print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
+
+
+# %%
+response_wide_split_by_activity(subscale_tranformed_data, mycolumn_list, output_path)
 
 # %%
 
