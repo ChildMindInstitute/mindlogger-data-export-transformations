@@ -167,7 +167,6 @@ def subscale_transform_long_format(data):
     
 subscale_tranformed_data_init = subscale_transform_long_format(response_data)
 if subscale_tranformed_data_init is not None:
-    subscale_tranformed_data_init.to_csv(output_path /"subscale_long_data.csv", index=False)
     subscale_tranformed_data = subscale_tranformed_data_init.copy()
 else: 
     subscale_tranformed_data = response_data.copy()
@@ -369,12 +368,8 @@ def widen_data(data, column_list):
     answers = data.groupby(column_list)['activity_submission_id'].apply(lambda x: '|'.join(x.astype(str))).reset_index()
 
     # Create combined column names
-    data['combined_cols'] = 'activityName['+ data['activity_name'] +']_itemName['+ data['item'].astype(str) + ']_itemId[' + data['item_id'].astype(str) + ']'
-    data['combined_cols'] = np.where(
-        data['combined_cols'].str.contains('_itemId[]', regex=False),
-        data['combined_cols'].str.replace('_itemId[]', '', regex=False),
-        data['combined_cols']
-    )
+    data['combined_cols'] = data['item'].astype(str)
+ 
 
     # Select relevant columns for pivoting
     subset_columns = column_list + ['combined_cols', 'merged_responses']
@@ -440,7 +435,7 @@ def response_wide_split_by_activity(data, column_list, output_path):
         # Apply the widen_data function
         wide_df = widen_data(df, column_list)
 
-        wide_df.columns = wide_df.columns.str.replace(r'^activityName\[[^\]]+\]_','', regex=True)
+        #wide_df.columns = wide_df.columns.str.replace(r'^activityName\[[^\]]+\]_','', regex=True)
 
         # Construct the filename using the activity name and id
         filename = output_folder / f"wide_data_activityName[{activity_name}]_activityId[{id_value}].csv"
