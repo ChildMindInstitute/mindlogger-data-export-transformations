@@ -13,6 +13,10 @@ def load_and_merge_response_files(input_dir):
     """
     Reads and combines all CSV files starting with 'report' from the specified directory.
     """
+    print("\n" + "=" * 50)
+    print(f"Starting data load and merge from input path: {input_dir}")
+    print("=" * 50)
+
     try:
         # Find all files starting with 'report' in the directory
         report_files = input_dir.glob('report*.csv')
@@ -26,8 +30,10 @@ def load_and_merge_response_files(input_dir):
         # Rename the first column
         combined_df.rename(columns={combined_df.columns[0]: 'activity_submission_id', 'activity_start_time' : 'activity_start_time_utc', 
                                     'activity_end_time' : 'activity_end_time_utc', 'activity_scheduled_time' : 'activity_scheduled_time_utc'}, inplace=True)
-        
+
         return combined_df
+    
+        
 
     except FileNotFoundError:
         print(f"Error: Directory {input_dir} not found.")
@@ -365,7 +371,7 @@ def response_wide_split_by_activity(data, column_list, output_path):
         
         # Write the DataFrame to a CSV file
         wide_df.to_csv(filename, index=False)
-        print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
+        #print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
 
 
 # %%
@@ -397,18 +403,23 @@ def main():
         output_file = output_path / 'report_all.csv'
         output_path.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
         response_data.to_csv(output_file, index=False)
-        print(f"Combined report saved to: {output_file}")
+        print("\n" + "=" * 50)
+        print("report_all.csv file saved")
+        print("=" * 50)
     else:
+        print("\n" + "=" * 50)
         print("No data to combine or no matching files found.")
-
+        print("=" * 50)
 
 
     # Process the response data and save applet data dictionary to CSV
     applet_data_dict = extract_applet_data_dict(response_data)
     applet_data_dict.to_csv(output_path / 'applet_data_dict.csv', index=False)
-    print(f"Applet data dictionary saved to: {output_path / 'applet_data_dict.csv'}")
+    print("=" * 50)
+    print("applet_data_dict.csv file saved")
+    print("=" * 50)
 
-    
+
     # Reorganizes subscales from columns to rows
     subscale_tranformed_data_init = subscale_transform_long_format(response_data)
     if subscale_tranformed_data_init is not None:
@@ -429,13 +440,22 @@ def main():
 
     # write long format output with all the cleaned data to a csv
     subscale_tranformed_data.to_csv(output_path/'report_response_formatted.csv', index=False)
+    print("=" * 50)
+    print("report_response_formatted.csv file saved")
+    print("=" * 50)
 
     # Apply the function to process data into wide format and save output to csv
     data_wide = widen_data(subscale_tranformed_data, final_column_list)
     data_wide.to_csv(os.path.join(output_path, 'report_response_formatted_widened.csv'), index=False)
+    print("=" * 50)
+    print("report_response_formatted_widened.csv file saved")
+    print("=" * 50)
 
-    
+
     response_wide_split_by_activity(subscale_tranformed_data, final_column_list, output_path)
+    print("=" * 50)
+    print("response_wide_split_by_activity folder created and split files saved within")
+    print("=" * 50)
 
 
 
