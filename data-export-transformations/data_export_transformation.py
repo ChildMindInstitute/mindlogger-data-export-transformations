@@ -6,18 +6,9 @@ import re, os, sqlite3
 from datetime import datetime
 from pathlib import Path
 from packaging.version import Version
+import argparse
 
 # %%
-#input variables
-
-input_path = Path('/Users/sailaja.yenepalli/Documents/scripts/a_Export Enhancements/NKI-LifeEvents/input')
-output_path = Path('/Users/sailaja.yenepalli/Documents/scripts/a_Export Enhancements/NKI-LifeEvents/output')
-
-#input_path = Path('/Users/minji.kang/Documents/NGDT/Data_export_management/Report_CSV_Preprocessing_Generic_Script/MiResource/input/')
-#output_path = Path('/Users/minji.kang/Documents/NGDT/Data_export_management/Report_CSV_Preprocessing_Generic_Script/MiResource/output/')
-
-# %%
-
 def load_and_merge_response_files(input_dir):
     """
     Reads and combines all CSV files starting with 'report' from the specified directory.
@@ -48,20 +39,6 @@ def load_and_merge_response_files(input_dir):
     # Return an empty DataFrame if an error occurs
     return pd.DataFrame()
 
-
-# Process the files using input path and save to output path
-if input_path.exists():
-    response_data = load_and_merge_response_files(input_path)
-    if not response_data.empty:
-        output_file = output_path / 'report_all.csv'
-        output_path.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
-        response_data.to_csv(output_file, index=False)
-        print(f"Combined report saved to: {output_file}")
-    else:
-        print("No data to combine or no matching files found.")
-else:
-    print(f"Input directory does not exist: {input_path}")
-
 # %%
 
 def extract_applet_data_dict(data):
@@ -72,12 +49,7 @@ def extract_applet_data_dict(data):
                  'activity_id', 'activity_name', 'item_id', 
                  'item', 'prompt', 'options']].drop_duplicates()
 
-# Process the response data and save applet data dictionary to CSV
-applet_data_dict = extract_applet_data_dict(response_data)
-applet_data_dict.to_csv(output_path / 'applet_data_dict.csv', index=False)
-print(f"Applet data dictionary saved to: {output_path / 'applet_data_dict.csv'}")
 
-# %%
 def subscale_transform_long_format(data):
     """
     Transforms subscale columns into rows
@@ -164,28 +136,15 @@ def subscale_transform_long_format(data):
 
         return joined_data
 
-    
-subscale_tranformed_data_init = subscale_transform_long_format(response_data)
-if subscale_tranformed_data_init is not None:
-    subscale_tranformed_data = subscale_tranformed_data_init.copy()
-else: 
-    subscale_tranformed_data = response_data.copy()
 
-# %%
 def format_epochtime(data, column_name):
     """
     Convert epoch time in milliseconds to datetime.
     """    
     return pd.to_datetime(pd.to_numeric(data[column_name], errors='coerce') / 1000, unit='s')
 
-# Apply the function to multiple columns using a loop
-for col in ['activity_start_time_utc', 'activity_end_time_utc', 'activity_scheduled_time_utc']:
-    subscale_tranformed_data[col] = format_epochtime(subscale_tranformed_data, col)
-
 
 # %%
-#Process responses to clean and format time entries
-
 def format_response(data): 
     formatted_responses = []
 
@@ -244,12 +203,7 @@ def format_response(data):
 
     return pd.Series(formatted_responses)
 
-subscale_tranformed_data['formatted_response'] = format_response(subscale_tranformed_data)
-
-
 # %%
-#Maps responses to scores based on the options column in the DataFrame.
-
 def response_value_score_mapping(data):
     
     response_scores = []
@@ -324,35 +278,14 @@ def response_value_score_mapping(data):
 
     return pd.Series(response_values), pd.Series(response_scores)
 
-subscale_tranformed_data['response_values'], subscale_tranformed_data['response_scores'] = response_value_score_mapping(subscale_tranformed_data)
-# response_value_score_mapping(subscale_tranformed_data)
-
-
-
-# %%
-# test_final = subscale_tranformed_data.copy()
-# test_final['merged_responses'] = test_final['response_scores'].combine_first(test_final['response_values']).combine_first(test_final['formatted_response'])
-# check_df = test_final[['userId', 'activity_id', 'activity_name', 'item_id', 'item', 'response', 'options', 'response_scores', 'response_values', 'formatted_response', 'merged_responses']]
-# check_df.to_csv(os.path.join(output_path, 'CHECK_response_value_score_mapping.csv'), index=False)
-
-subscale_tranformed_data.to_csv(output_path/'report_response_formatted.csv', index=False)
-
-# %%
-
-# Define column list and response column name
-mycolumn_list = [
-    'userId', 'secret_user_id', 'source_user_secret_id', 
-    'target_user_secret_id', 'input_user_secret_id', 
-    'activity_start_time_utc', 'activity_end_time_utc', 'activity_scheduled_time_utc',
-    'activity_flow_id', 'activity_flow_name', 
-    'activity_id', 'activity_name', 
-    'event_id', 'version'
-]
 
 def widen_data(data, column_list):
     """
     Transforms data into a wide format based on the specified column list.
     """
+
+
+
     # merge formatted response, values and scores created a single response field
     data = data.copy()
     data['merged_responses'] = data['response_scores'].combine_first(data['response_values']).combine_first(data['formatted_response'])
@@ -398,14 +331,8 @@ def widen_data(data, column_list):
     
     return dat_wide
 
-# Apply the function to process data into wide format
-data_wide = widen_data(subscale_tranformed_data, mycolumn_list)
-
-# Save the output to CSV
-data_wide.to_csv(os.path.join(output_path, 'report_response_formatted_widened.csv'), index=False)
 
 
-# %%
 def response_wide_split_by_activity(data, column_list, output_path):
 
     #Group data by activity_id
@@ -444,11 +371,93 @@ def response_wide_split_by_activity(data, column_list, output_path):
         wide_df.to_csv(filename, index=False)
         print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
 
-
 # %%
-response_wide_split_by_activity(subscale_tranformed_data, mycolumn_list, output_path)
+# Main function to coordinate execution
+def main():
+    parser = argparse.ArgumentParser(description="Data Export Transformation Script")
+    parser.add_argument("--input_path", required=True, help="Path to the input folder containing files")
+    parser.add_argument("--output_path", required=True, help="Path to the output folder to save results")
+    #parser.add_argument("--tasks", nargs="+", default=["process"], 
+    #                    help="Tasks to execute: process, validate, report, extract_applet, transform_subscale")
+    
+    args = parser.parse_args()
+    input_path = Path(args.input_path)
+    output_path = Path(args.output_path)
+    #tasks = args.tasks
 
-# %%
+    final_column_list = [
+    'userId', 'secret_user_id', 'source_user_secret_id', 
+    'target_user_secret_id', 'input_user_secret_id', 
+    'activity_start_time_utc', 'activity_end_time_utc', 'activity_scheduled_time_utc',
+    'activity_flow_id', 'activity_flow_name', 
+    'activity_id', 'activity_name', 
+    'event_id', 'version'
+    ]
+
+    # merges all report.csv files and creates merged output - report_all.csv
+    response_data = load_and_merge_response_files(input_path)
+    if not response_data.empty:
+        output_file = output_path / 'report_all.csv'
+        output_path.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
+        response_data.to_csv(output_file, index=False)
+        print("\n" + "=" * 50)
+        print("report_all.csv file saved")
+        print("=" * 50)
+    else:
+        print("\n" + "=" * 50)
+        print("No data to combine or no matching files found.")
+        print("=" * 50)
+
+
+    # Process the response data and save applet data dictionary to CSV
+    applet_data_dict = extract_applet_data_dict(response_data)
+    applet_data_dict.to_csv(output_path / 'applet_data_dict.csv', index=False)
+    print("=" * 50)
+    print("applet_data_dict.csv file saved")
+    print("=" * 50)
+
+
+    # Reorganizes subscales from columns to rows
+    subscale_tranformed_data_init = subscale_transform_long_format(response_data)
+    if subscale_tranformed_data_init is not None:
+        subscale_tranformed_data = subscale_tranformed_data_init.copy()
+    else: 
+        subscale_tranformed_data = response_data.copy()
+
+
+    # format all epoch datetime columns to human readable timestamp
+    for col in ['activity_start_time_utc', 'activity_end_time_utc', 'activity_scheduled_time_utc']:
+        subscale_tranformed_data[col] = format_epochtime(subscale_tranformed_data, col)
+
+    # creates a new cleaned version of the response column - formatted_response
+    subscale_tranformed_data['formatted_response'] = format_response(subscale_tranformed_data)
+
+    # created 2 new columns, extracting the exact selection of the response and corresponding score
+    subscale_tranformed_data['response_values'], subscale_tranformed_data['response_scores'] = response_value_score_mapping(subscale_tranformed_data)
+
+    # write long format output with all the cleaned data to a csv
+    subscale_tranformed_data.to_csv(output_path/'report_response_formatted.csv', index=False)
+    print("=" * 50)
+    print("report_response_formatted.csv file saved")
+    print("=" * 50)
+
+    # Apply the function to process data into wide format and save output to csv
+    data_wide = widen_data(subscale_tranformed_data, final_column_list)
+    data_wide.to_csv(os.path.join(output_path, 'report_response_formatted_widened.csv'), index=False)
+    print("=" * 50)
+    print("report_response_formatted_widened.csv file saved")
+    print("=" * 50)
+
+
+    response_wide_split_by_activity(subscale_tranformed_data, final_column_list, output_path)
+    print("=" * 50)
+    print("response_wide_split_by_activity folder created and split files saved within")
+    print("=" * 50)
+
+
+
+if __name__ == "__main__":
+    main()
 
 
 
