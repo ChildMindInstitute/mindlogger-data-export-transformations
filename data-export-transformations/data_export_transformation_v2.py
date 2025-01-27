@@ -13,10 +13,6 @@ def load_and_merge_response_files(input_dir):
     """
     Reads and combines all CSV files starting with 'report' from the specified directory.
     """
-    print("\n" + "=" * 50)
-    print(f"Starting data load and merge from input path: {input_dir}")
-    print("=" * 50)
-
     try:
         # Find all files starting with 'report' in the directory
         report_files = input_dir.glob('report*.csv')
@@ -30,10 +26,8 @@ def load_and_merge_response_files(input_dir):
         # Rename the first column
         combined_df.rename(columns={combined_df.columns[0]: 'activity_submission_id', 'activity_start_time' : 'activity_start_time_utc', 
                                     'activity_end_time' : 'activity_end_time_utc', 'activity_scheduled_time' : 'activity_scheduled_time_utc'}, inplace=True)
-
-        return combined_df
-    
         
+        return combined_df
 
     except FileNotFoundError:
         print(f"Error: Directory {input_dir} not found.")
@@ -60,10 +54,11 @@ def subscale_transform_long_format(data):
     """
     Transforms subscale columns into rows
     """
-    
     # Remove 'legacy_user_id' if it exists
     if 'legacy_user_id' in data.columns:
         data = data.drop(columns=['legacy_user_id'])
+    
+    melt_df = data.drop(columns=['item','response','item_id','prompt','options','rawScore'])
 
     id_vars = data[['activity_submission_id', 'activity_flow_submission_id',
         'activity_scheduled_time_utc', 'activity_start_time_utc', 'activity_end_time_utc',
@@ -82,7 +77,7 @@ def subscale_transform_long_format(data):
     else:
 
         # Reshape the DataFrame using melt for columns after 'timezone_offset'
-        reshaped_data = data.melt(
+        reshaped_data = melt_df.melt(
             id_vars= id_vars,         # Columns to keep as identifiers
             value_vars=value_vars,   # Columns to reshape
             var_name="item",         # New column to hold column names
@@ -150,6 +145,7 @@ def format_epochtime(data, column_name):
     return pd.to_datetime(pd.to_numeric(data[column_name], errors='coerce') / 1000, unit='s')
 
 
+# %%
 def format_response(data): 
     formatted_responses = []
 
@@ -208,7 +204,7 @@ def format_response(data):
 
     return pd.Series(formatted_responses)
 
-
+# %%
 def response_value_score_mapping(data):
     
     response_scores = []
@@ -288,6 +284,9 @@ def widen_data(data, column_list):
     """
     Transforms data into a wide format based on the specified column list.
     """
+
+
+
     # merge formatted response, values and scores created a single response field
     data = data.copy()
     data['merged_responses'] = data['response_scores'].combine_first(data['response_values']).combine_first(data['formatted_response'])
@@ -372,7 +371,6 @@ def response_wide_split_by_activity(data, column_list, output_path):
         # Write the DataFrame to a CSV file
         wide_df.to_csv(filename, index=False)
         #print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
-
 
 # %%
 # Main function to coordinate execution
@@ -461,4 +459,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
