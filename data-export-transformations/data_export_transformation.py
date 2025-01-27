@@ -6,6 +6,7 @@ import re, os, sqlite3
 from datetime import datetime
 from pathlib import Path
 from packaging.version import Version
+import zipfile
 import argparse
 
 # %%
@@ -348,29 +349,31 @@ def response_wide_split_by_activity(data, column_list, output_path):
     latest_versions['activity_name'] = latest_versions['activity_name'].apply(lambda x: re.sub(r'[^\w\s]', '_', x))
 
     # Define the folder to save the CSV files
-    output_folder = output_path / "response_wide_split_by_activity"
-    output_folder.mkdir(parents=True, exist_ok=True)  # Create the folder if it doesn't exist
+    output_zip_path = output_path / "response_wide_split_by_activity.zip"
 
-    # Apply the function to each DataFrame and save as CSV
-    for id_value, df in report_response_by_activity.items():
-        # Merge the name from id_name_df based on 'id'
-        name_df = latest_versions[latest_versions['activity_id'] == id_value]
-        if not name_df.empty:
-            activity_name = name_df['activity_name'].values[0]
-        else:
-            activity_name = f"Unknown_{id_value}"
+     # Create a new zip file to store the CSV files
+    with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # Apply the function to each DataFrame and save as CSV inside the zip file
+        for id_value, df in report_response_by_activity.items():
+            # Merge the name from latest_versions based on 'activity_id'
+            name_df = latest_versions[latest_versions['activity_id'] == id_value]
+            if not name_df.empty:
+                activity_name = name_df['activity_name'].values[0]
+            else:
+                activity_name = f"Unknown_{id_value}"
 
-        # Apply the widen_data function
-        wide_df = widen_data(df, column_list)
+            # Apply the widen_data function to reshape the DataFrame
+            wide_df = widen_data(df, column_list)
 
-        #wide_df.columns = wide_df.columns.str.replace(r'^activityName\[[^\]]+\]_','', regex=True)
+            # Construct the filename for the CSV to be saved inside the zip file
+            csv_filename = f"wide_data_activityName[{activity_name}]_activityId[{id_value}].csv"
 
-        # Construct the filename using the activity name and id
-        filename = output_folder / f"wide_data_activityName[{activity_name}]_activityId[{id_value}].csv"
-        
-        # Write the DataFrame to a CSV file
-        wide_df.to_csv(filename, index=False)
-        #print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
+            # Convert DataFrame to CSV and write it directly into the zip file
+            with zipf.open(csv_filename, 'w') as file:
+                wide_df.to_csv(file, index=False)
+                #print(f"Saved CSV for {activity_name} (id={id_value}) to {csv_filename} inside the zip archive")
+    
+    #print(f"All files have been saved in the zip archive: {output_zip_path}")
 
 # %%
 # Main function to coordinate execution
