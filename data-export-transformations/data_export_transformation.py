@@ -54,10 +54,11 @@ def subscale_transform_long_format(data):
     """
     Transforms subscale columns into rows
     """
-    
     # Remove 'legacy_user_id' if it exists
     if 'legacy_user_id' in data.columns:
         data = data.drop(columns=['legacy_user_id'])
+    
+    melt_df = data.drop(columns=['item','response','item_id','prompt','options','rawScore'])
 
     id_vars = data[['activity_submission_id', 'activity_flow_submission_id',
         'activity_scheduled_time_utc', 'activity_start_time_utc', 'activity_end_time_utc',
@@ -76,7 +77,7 @@ def subscale_transform_long_format(data):
     else:
 
         # Reshape the DataFrame using melt for columns after 'timezone_offset'
-        reshaped_data = data.melt(
+        reshaped_data = melt_df.melt(
             id_vars= id_vars,         # Columns to keep as identifiers
             value_vars=value_vars,   # Columns to reshape
             var_name="item",         # New column to hold column names
@@ -369,7 +370,7 @@ def response_wide_split_by_activity(data, column_list, output_path):
         
         # Write the DataFrame to a CSV file
         wide_df.to_csv(filename, index=False)
-        print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
+        #print(f"Saved CSV for {activity_name} (id={id_value}) to {filename}")
 
 # %%
 # Main function to coordinate execution
