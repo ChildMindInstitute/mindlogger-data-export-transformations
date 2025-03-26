@@ -20,7 +20,7 @@ def load_and_merge_response_files(input_dir):
         
         # Read and combine CSV files on the fly
         combined_df = pd.concat(
-            (pd.read_csv(file, encoding='ISO-8859-1') for file in report_files),
+            (pd.read_csv(file, encoding='UTF-8') for file in report_files),
             ignore_index=True
         )
         
