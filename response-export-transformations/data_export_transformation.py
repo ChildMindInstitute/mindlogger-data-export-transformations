@@ -48,7 +48,7 @@ def extract_applet_data_dict(data):
     """
     return data[['applet_version', 'activity_flow_id', 'activity_flow_name', 
                  'activity_id', 'activity_name', 'item_id', 
-                 'item_name', 'item_prompt', 'item_response_options']].drop_duplicates()
+                 'item_name', 'item_prompt', 'item_response_options', 'item_type']].drop_duplicates()
 
 
 def subscale_transform_long_format(data):
@@ -59,7 +59,7 @@ def subscale_transform_long_format(data):
     if 'legacy_user_id' in data.columns:
         data = data.drop(columns=['legacy_user_id', 'rawScore'])
     
-    melt_df = data.drop(columns=['item_name','item_response','item_id','item_prompt','item_response_options'])
+    melt_df = data.drop(columns=['item_name','item_response','item_id','item_prompt','item_response_options', 'item_type'])
 
     id_vars = data[['activity_submission_id', 'activity_flow_submission_id',
         'activity_schedule_start_time_utc', 'activity_start_time_utc', 'activity_end_time_utc',
@@ -71,7 +71,7 @@ def subscale_transform_long_format(data):
         'activity_name', 'activity_flow_id', 'activity_flow_name', 'applet_version', 
         'activity_submission_review_id', 'activity_schedule_id', 'utc_timezone_offset']].columns.to_list()
 
-    value_vars = data.columns[data.columns.get_loc('item_response_status')+1:].tolist()
+    value_vars = data.columns[data.columns.get_loc('item_type')+1:].tolist()
     
     if not value_vars:  # Check if the list is empty
         print(" No Subscale Scores Present")
@@ -90,6 +90,7 @@ def subscale_transform_long_format(data):
             item_id='',
             item_prompt= '',
             item_response_options='',
+            item_type=''
         )    
 
 
@@ -121,14 +122,15 @@ def format_response(data):
 
     for i, row in data.iterrows():
         response = row.get('item_response', None)
+        response_type = row.get('item_type', None)
 
         # Ensure response is a string or NaN
         if not isinstance(response, str):
             response = str(response) if not pd.isna(response) else np.nan
 
         # Clean responses
-        if isinstance(response, str):
-            if "geo:" in response:
+        if isinstance(response, str) and isinstance(response_type, str):
+            if "geolocation" in response_type:
                 geo_match = re.search(r'geo:\s*lat\s*\((.*?)\)\s*/\s*long\s*\((.*?)\)', response)
                 if geo_match:
                     lat, long = geo_match.groups()
@@ -139,7 +141,7 @@ def format_response(data):
                 formatted_responses.append(re.sub(r"value:\s*", "", response))
                 continue
 
-            if "date:" in response:
+            if "date" in response_type:
                 formatted_responses.append(re.sub(r"date:\s*", "", response))
                 continue
 
@@ -147,7 +149,7 @@ def format_response(data):
                 formatted_responses.append(np.nan)
                 continue
 
-            if "time:" in response:
+            if "time" in response_type:
                 time_match = re.search(r'hr\s*(\d{1,2}),\s*min\s*(\d{1,2})', response)
                 if time_match:
                     hour, minute = map(int, time_match.groups())
@@ -156,7 +158,7 @@ def format_response(data):
                 formatted_responses.append(np.nan)
                 continue
 
-            if "time_range:" in response:
+            if "timeRange" in response_type:
                 try:
                     clean_time = re.sub(r'[a-zA-Z\s+(\)_:]', '', response).replace(',', ':')
                     time_parts = clean_time.split('/')
@@ -197,17 +199,33 @@ def response_value_score_mapping(data):
             split_response = [resp.strip() for resp in response.strip().split(": ")[1].split(',')]
 
             # Build the score mapping dictionary
-            scores = {
-                opt.split(": ")[1].split(" ")[0]:  # Extract position part
-                opt.split("score: ")[1].strip(" )")  # Extract score part
-                for opt in split_options if "score: " in opt
-            }
+            scores = {}
+            score_values = {}
             
-            score_values = {
-                opt.split(": ")[1].split(" ")[0]:  # Extract position part
-                opt.split(":")[0].strip()  # Extract value part
-                for opt in split_options if "score: " in opt
-            }
+            for opt in split_options:
+                if "score: " in opt:
+                    # Extract the score
+                    score = opt.split("score: ")[1].strip(" )")
+                    
+                    # Find the part before "(score:"
+                    before_score = opt.split("(score:")[0].strip()
+                    
+                    # Use regex to find the value number that comes right before (score:
+                    # This matches: any text, then a colon, then spaces, then a number
+                    match = re.search(r'^(.*?):\s*(\d+)\s*$', before_score)
+                    
+                    if match:
+                        # The label is everything before the last ": number"
+                        label = match.group(1).strip()
+                        # The value is the number
+                        value = match.group(2).strip()
+                        
+                        scores[value] = score
+                        score_values[value] = label
+                    else:
+                        # Fallback for unexpected format
+                        scores[before_score] = score
+                        score_values[before_score] = before_score
 
             # Map responses to scores
             response_score_mapping = [scores.get(resp, "N/A") for resp in split_response]
@@ -227,16 +245,34 @@ def response_value_score_mapping(data):
                     response_scores.append(np.nan)
                 
             else:
-                value_options = ', ' + options + ','
-                split_options_text = [opt.strip() for opt in re.findall(r',\s(.*?):', value_options)]
-                split_options_value = [opt.strip() for opt in re.findall(r':\s(\d+),', value_options)]
+                # Handle regular value options without scores
+                value_options = options.strip()
+                
+                # Split by comma to get individual options
+                option_parts = [opt.strip() for opt in value_options.split(',')]
+                
+                values = {}
+                for part in option_parts:
+                    # Use regex to find the pattern: "any text: number"
+                    # where the number is the last thing after the last colon
+                    match = re.search(r'^(.*?):\s*(\d+)\s*$', part.strip())
+                    
+                    if match:
+                        # The label is everything before the last ": number"
+                        label = match.group(1).strip()
+                        # The value is the number
+                        value = match.group(2).strip()
+                        values[value] = label
+                    else:
+                        # If no match, try to handle it as before (fallback)
+                        if ':' in part:
+                            parts = part.split(':')
+                            # Assume last part is value, everything else is label
+                            value = parts[-1].strip()
+                            label = ':'.join(parts[:-1]).strip()
+                            values[value] = label
+                
                 split_response_values = [resp.strip() for resp in response.strip().split(": ")[1].split(',')]
-
-                # Build actual response mapping
-                values = {
-                    value: text  # Map position (value) to response text
-                    for text, value in zip(split_options_text, split_options_value)
-                }
                 
                 # Map response positions to actual values
                 response_value_mapping = [values.get(resp, re.sub('value: ', '', response)) for resp in split_response_values]
@@ -268,37 +304,26 @@ def widen_data(data, column_list):
     # Fill missing values in specified columns
     data[column_list] = data[column_list].fillna('')
 
-    # Group by the column list and combine IDs
-    answers = data.groupby(column_list)['activity_submission_id'].apply(lambda x: '|'.join(x.astype(str))).reset_index()
-
-    # Create combined column names
-    data['combined_cols'] = data['item_name'].astype(str)
- 
-
     # Select relevant columns for pivoting
-    subset_columns = column_list + ['combined_cols', 'merged_responses']
+    subset_columns = column_list + ['item_name', 'merged_responses']
 
     #Create row order
     dat_subset = data[subset_columns].copy()  # Explicitly make a copy
     dat_subset['row_order'] = range(len(dat_subset))
 
     # Pivot the data into wide format
-    dat_wide = pd.pivot_table(
+    dat_wide = pd.pivot(
         dat_subset, 
         index=column_list, 
-        columns='combined_cols', 
-        values='merged_responses', 
-        aggfunc='last'
+        columns='item_name', 
+        values='merged_responses'
     ).reset_index()
 
-    column_order = dat_subset.sort_values(by='row_order')['combined_cols'].unique()
+    column_order = dat_subset.sort_values(by='row_order')['item_name'].unique()
 
     # Reorder the wide DataFrame columns based on the original row order
     reordered_columns = list(column_list) + list(column_order)
     dat_wide = dat_wide.reindex(columns=reordered_columns, fill_value='')
-
-    # Merge with the combined IDs
-    dat_wide = pd.merge(dat_wide, answers, on=column_list, how='outer')
     
     return dat_wide
 
@@ -363,7 +388,7 @@ def main():
     'target_secret_id', 'input_secret_id', 
     'activity_start_time_utc', 'activity_end_time_utc', 'activity_schedule_start_time_utc',
     'activity_flow_id', 'activity_flow_name', 
-    'activity_id', 'activity_name', 
+    'activity_id', 'activity_name', 'activity_submission_id',
     'activity_schedule_id', 'applet_version'
     ]
 
