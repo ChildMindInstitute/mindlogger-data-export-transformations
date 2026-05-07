@@ -387,7 +387,7 @@ def main():
     'userId', 'secret_user_id', 'source_secret_id', 
     'target_secret_id', 'input_secret_id', 
     'activity_start_time_utc', 'activity_end_time_utc', 'activity_schedule_start_time_utc',
-    'activity_flow_id', 'activity_flow_name', 
+    'activity_flow_id', 'activity_flow_name', 'activity_flow_submission_id',
     'activity_id', 'activity_name', 'activity_submission_id',
     'activity_schedule_id', 'applet_version'
     ]
